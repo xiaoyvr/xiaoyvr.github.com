@@ -20,5 +20,17 @@ tags: [JekyllBootstrap,github,jekyll]
 
 <!--more-->
 
-### 环境准备
+### 搭建步骤
 
+你需要有github账号，以下用**USERNAME**作为你账号的代称。
+
+1. 创建一个新的repository，名字是USERNAME.github.io
+1. 安装Jekyll-Bootstrap
+
+```bash
+git clone https://github.com/plusjade/jekyll-bootstrap.git USERNAME.github.com
+cd USERNAME.github.com
+git remote set-url origin git@github.com:USERNAME/USERNAME.github.com.git
+git push origin master
+```
+上面的命令执行之后，打开http://USERNAME.github.io，你应该可以看到自己的博客了

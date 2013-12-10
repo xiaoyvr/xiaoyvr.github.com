@@ -129,4 +129,4 @@ JB :
   # where [HELPER] is the name of the helper you are overriding.
   
 excerpt_separator: <!--more-->
-markdown: rdiscount
+markdown: redcarpet
