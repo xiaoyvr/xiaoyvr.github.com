@@ -1,0 +1,8 @@
+---
+layout: post
+title: "用JekyllBootstrap搭建博客"
+description: ""
+category: ""
+tags: []
+---
+{% include JB/setup %}
