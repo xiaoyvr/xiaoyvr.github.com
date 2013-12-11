@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/xiaoyvr/xiaoyvr.github.io.png)](https://travis-ci.org/xiaoyvr/xiaoyvr.github.io)
+
 # Jekyll-Bootstrap
 
 The quickest way to start and publish your Jekyll powered blog. 100% compatible with GitHub pages
