@@ -56,4 +56,4 @@ tags: [JekyllBootstrap,github,jekyll]
 
 更多更高级的技巧，就需要去研究[Liquid](https://github.com/Shopify/liquid/wiki/Liquid-for-Designers)的语法了。
 
-接下来，在根目录下运行`rake create post="my first awsome post"`，去/_posts目录下找到这个markdown文件，用你喜欢的editor打开开始写博客吧，本地写好之后，发布博客就是commit之后push到github上，这一切是如此的简单。
+接下来，在根目录下运行`rake post title="my first awsome post"`，去/_posts目录下找到这个markdown文件，用你喜欢的editor打开开始写博客吧，本地写好之后，发布博客就是commit之后push到github上，这一切是如此的简单。
