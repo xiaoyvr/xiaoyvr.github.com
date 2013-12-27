@@ -44,7 +44,7 @@ private string CreateUser(int oldUserId)
 ```
 打眼儿一看，没看出什么问题，然后我便问剑总，肿么了？剑总指着`CreateOrUpdateAccount`这个函数中的`userId`说，“这个userId让我觉得好别扭，感觉在用它绕圈子。”
 
-这段代码是为了把老系统中的用户迁移到新系统中去，`oldUserId`是用户在老系统中的id，`migrationProcess.UserId`是用户在新系统中的id。为了保持迁移过程的幂等性（调用两次产生同样的结果，也就是不会产生两个用户），我们建立了`MigrationProcess`这个对象，在其中记录了迁移的过程。如果由于什么因素，用户没有被创建出来，我们重试就能创建出来（发Post请求）；而如果上次user已经被创建出来了，这个过程就变成了更新（发Put请求）。在整个过程中，为了区分用户是否被创建出来，于是对这个对象中的`userId`进行了判空操作，然后接着又一次使用`userId`进行更新操作，最后调用API获得用户的accountId。
+这段代码是为了把老系统中的用户迁移到新系统中去，`oldUserId`是用户在老系统中的id，`migrationProcess.UserId`是用户在新系统中的id。为了保持迁移过程的幂等性（调用两次产生同样的结果，也就是不会产生两个用户），我们建立了`MigrationProcess`这个对象，在其中记录了迁移的过程。如果由于什么因素，用户没有被创建出来，我们重试就能创建出来（发Post请求）；而如果上次用户已经被创建出来了，这个过程就变成了更新（发Put请求）。在整个过程中，为了区分用户是否被创建出来，于是对这个对象中的`userId`进行了判空操作，然后接着又一次使用`userId`进行更新操作，最后调用API获得用户的accountId。
 
 的确是这样的，用`userId`绕了半天的圈子，然而它只是为了得到`accountId`的一个中间变量，而且，在调用`CreateUser`的时候（Post），从Location上分离出userId的逻辑也显得十分诡异。
 
@@ -64,7 +64,7 @@ private Guid CreateOrUpdateAccount(int oldUserId)
     else
     {
         migrationProcess.UserAccountId = CreateUser(oldUserId);
-        goMigrationRepo.Save(migrationProcess)
+        migrationRepo.Save(migrationProcess)
     }
     return userAccountId;    
 }
