@@ -19,7 +19,7 @@ private Guid CreateOrUpdateAccount(int oldUserId)
     var userId = migrationProcess.UserId;
     if (!string.IsNullOrEmpty(userId))
     {
-        var updateDto = repository.ExtendUpdateUserDto(oldUserId, apiClient.Address);
+        var updateDto = repository.GetUpdateDto(oldUserId);
         var response = apiClient.PutAsJson(string.Format("users/migration-process/{0}", userId), updateDto);
         response.EnsureSuccessStatusCode("Reset User");
     }
@@ -27,28 +27,29 @@ private Guid CreateOrUpdateAccount(int oldUserId)
     {
         userId = CreateUser(oldUserId);
     }
-    var accountId = new Guid(apiClient.GetEnsureSuccess<UserInfo>(String.Format("users/{0}", userId)).AccountId);;
+    var accountId = new Guid(apiClient.GetEnsureSuccess<UserInfo>(string.Format("users/{0}", userId)).AccountId);;
     return accountId;
 }
 
 private string CreateUser(int oldUserId)
 {
-    var userDto = repository.FindById(oldUserId, apiClient.Address);
+    var userDto = repository.FindById(oldUserId);
     var response = apiClient.PostAsJson("users", userDto);
     response.EnsureSuccessStatusCode("Create User");
     var userUri = response.Headers.Location;
     UpdateUserInformation(oldUserId, userUri);
-    var last = userUri.AbsoluteUri.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries).Last();
-    return last;
+    var newUserId = userUri.AbsoluteUri.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries).Last();
+    return newUserId;
 }
 ```
+
 打眼儿一看，没看出什么问题，然后我便问剑总，肿么了？剑总指着`CreateOrUpdateAccount`这个函数中的`userId`说，“这个userId让我觉得好别扭，感觉在用它绕圈子。”
 
-这段代码是为了把老系统中的用户迁移到新系统中去，`oldUserId`是用户在老系统中的id，`migrationProcess.UserId`是用户在新系统中的id。为了保持迁移过程的幂等性（调用两次产生同样的结果，也就是不会产生两个用户），我们建立了`MigrationProcess`这个对象，在其中记录了迁移的过程。如果由于什么因素，用户没有被创建出来，我们重试就能创建出来（发Post请求）；而如果上次用户已经被创建出来了，这个过程就变成了更新（发Put请求）。在整个过程中，为了区分用户是否被创建出来，于是对这个对象中的`userId`进行了判空操作，然后接着又一次使用`userId`进行更新操作，最后调用API获得用户的accountId。
+这段代码是为了把老系统中的用户迁移到新系统中去，`oldUserId`是用户在老系统中的id，`migrationProcess.UserId`是用户在新系统中的id。为了保持迁移过程的幂等性（调用两次产生同样的结果，也就是不会产生两个用户），我们建立了`MigrationProcess`这个对象，在其中记录了迁移的过程。如果由于什么因素，用户没有被创建出来，直接重试就能创建出来（发Post请求）；而如果上次用户已经被创建出来了，这个过程就变成了更新（发Put请求）。在整个过程中，为了区分用户是否被创建出来，于是对这个对象中的`userId`进行了判空操作，然后接着又一次使用`userId`进行更新操作，最后调用API获得用户的accountId。
 
 的确是这样的，用`userId`绕了半天的圈子，然而它只是为了得到`accountId`的一个中间变量，而且，在调用`CreateUser`的时候（Post），从Location上分离出userId的逻辑也显得十分诡异。
 
-我的第一直觉是应该可以连接数据库直接访问MigrationProcess，而不是通过API，这要求把MigrationAPI的实现放在当前程序中。这样的话，代码可能会变成这个样子
+我的第一直觉是应该可以连接数据库直接访问MigrationProcess，而不是通过Service的API请求，这要求把MigrationProcess对象放在当前程序中。代码可能会变成这个样子
 
 ```c#
 private Guid CreateOrUpdateAccount(int oldUserId)
@@ -57,7 +58,7 @@ private Guid CreateOrUpdateAccount(int oldUserId)
     var userAccountId = migrationProcess.UserAccountId;
     if (!string.IsNullOrEmpty(userAccountId))
     {          
-        var updateDto = repository.ExtendUpdateUserDto(oldUserId, apiClient.Address);
+        var updateDto = repository.GetUpdateDto(oldUserId);
         var response = apiClient.PutAsJson(string.Format("users/migration-process/{0}", userAccountId), updateDto);
         response.EnsureSuccessStatusCode("Reset User");
     }
@@ -80,7 +81,8 @@ private Guid CreateUser(int oldUserId)
     return userAccountId;
 }
 ```
-修改后的代码的确消除了对userId的使用，然而，这坨代码仍然让人觉得非常别扭，如果无法找到这段代码的坏味道，也就没办法使它变得更好。
+
+修改后的代码的确消除了对`userId`的使用，然而，这坨代码仍然让人觉得非常别扭，如果无法找到这段代码的坏味道，也就没办法使它变得更好。
 
 那么，坏味道究竟是什么呢？究竟是什么让剑总和我感到如此的别扭呢？
 我周末苦苦思索了半饷，突然间冒出来了个主意，可能很多人早就想到了，show代码先
@@ -98,7 +100,7 @@ private Guid CreateOrUpdateAccount(int oldUserId)
 
 private HttpResponseMessage ResetUser(int oldUserId, string userUrl)
 {
-    var updateDto = repository.ExtendUpdateUserDto(oldUserId, apiClient.Address);
+    var updateDto = repository.GetUpdateDto(oldUserId);
     var response = apiClient.PutAsJsonByLink(userUrl, updateDto);
     response.EnsureSuccessStatusCode("Reset User");
     return response;
@@ -106,23 +108,25 @@ private HttpResponseMessage ResetUser(int oldUserId, string userUrl)
 
 private HttpResponseMessage CreateUser(int oldUserId, string assingeeUrl)
 {
-    var userDto = repository.FindById(oldUserId, apiClient.Address);
-    var response = apiClient.PostAsJson(assingeeUrl, userDto);
+    var userCreationDto = repository.FindById(oldUserId, apiClient.Address);
+    var response = apiClient.PostAsJson(assingeeUrl, userCreationDto);
     response.EnsureSuccessStatusCode("Create User");
     var userUri = response.Headers.Location;
-
-    var request = repository.GetUserForUpdateDto(oldUserId, apiClient.Address);
-    var responseMessage = apiClient.PutAsJsonByLink(userUri.ToString(), request);
-    responseMessage.EnsureSuccessStatusCode("Update User Information");
-    return responseMessage;
+	
+    var updateDto = repository.GetUserForUpdateDto(oldUserId);
+    var response = apiClient.PutAsJsonByLink(userUri.ToString(), updateDto);
+    response.EnsureSuccessStatusCode("Update User Information");
+    return response;
 }
 ```
-再和第一个版本比较一下，这里唯一做出的修改是把`userId`变换成了`userLink`，剩下的都是水到渠成的了，这才是**HATEOAS (hypermedia as the engine of application state)**嘛。
 
-在Rest的世界里，如果你在使用url template，那么，这就是坏味道，如果你在解析url，那么这也是坏味道。这些个坏味道说明了server端没有提供足够的Hypermedia Links（或者提供了你不知道），使得整个业务过程连不起来，只能依赖于out of blue的url template。
+再和第一个版本比较一下，这里唯一做出的修改是把`userId`变换成了`userLink`，剩下的都是水到渠成的了，这才是**HATEOAS (hypermedia as the engine of application state)**嘛。使用hypermedia link，消除了对url template的紧耦合，对userId的使用变成了follow links，判空操作变成了对http method的检查，理解起来非常很容易，代码在一个更高的层次上达到了一致。
 
-看上去像是一个`userId`的问题，然而跳出这段代码本身，却可以看到却是提供端的API设计不完善，在这背后折
-射出我对Rest的理解还不够深刻。
+在Rest的世界里，如果你在使用url template，那么，这就是坏味道，如果你在解析url，那么这也是坏味道。这些个坏味道说明了server端没有提供足够的Hypermedia Links（或者提供了你不知道），使得整个业务过程连不起来，只能依赖于out of blue的url template。看上去像是一个`userId`的问题，然而跳出这段代码本身，却可以看到却是提供端的API设计不完善。
+
+解决这个问题的过程也颇耐人寻味，先嗅到了味道，然而却茫然无措，觉得任何一种方案都有利有弊，感觉选哪个不够好，经过一段时间的思考之后，跳出了当前的迷局，从一个更系统的角度找到了思路解决了问题。回想起来，我们时常都会陷入这样的情况：性能调优的时候就一个问题争论不休，然后突然发现产品环境下根本没这种情况；重构代码的时候纠结于用什么样的设计模式，客户沟通之后发现需求本身根本没那么复杂；抱怨着大家都不写测试，却连测试覆盖率都没有度量拿不出手；纠结于要不要每一行代码都要测试覆盖，却没有意识到要从功能而不是实现的角度来写测试……
+
+跳出当前的细节，把问题拿到一个更大的上下文中，反而更容易得到答案，这就是系统思考的威力。
 
 -------------------------------------------------------------------------------
 
